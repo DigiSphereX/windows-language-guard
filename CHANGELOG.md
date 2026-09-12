@@ -2,6 +2,15 @@
 
 All notable changes to LanguageGuard are documented here.
 
+## 1.0.2 - 2026-09-12
+
+- New: the checklist now contains the **full Windows "Add a language" catalog**
+  (600+ languages, e.g. Arabic (Iraq), English (United Kingdom), ...), not just the
+  layouts physically installed on the machine.
+- New: search box to filter the list while typing.
+- Fix: checking a language, filtering it away, then enabling no longer drops it
+  from the protected set.
+
 ## 1.0.1 - 2026-09-12
 
 - Fix: "Balloon tip text must have a non-empty value" crash when protection resumed at startup.

@@ -1,5 +1,5 @@
 //
-// LanguageGuard - portable Windows input-language keeper (v1.0.1)
+// LanguageGuard - portable Windows input-language keeper (v1.0.2)
 //
 // Lets you choose which input languages you type in. While it runs, Windows can
 // never silently add another language/keyboard near the clock again: any
@@ -53,19 +53,26 @@ namespace LanguageGuard
 
     internal static class Lang
     {
+        private static readonly Dictionary<string, string> _nameCache = new Dictionary<string, string>();
+
         private static string _display(string id8)
         {
+            string cached;
+            if (_nameCache.TryGetValue(id8, out cached)) return cached;
+            string result;
             try
             {
                 string hex = id8.Substring(4, 4);
                 int lcid = Convert.ToInt32(hex, 16);
                 CultureInfo ci = CultureInfo.GetCultureInfo(lcid);
-                return ci.EnglishName;
+                result = ci.EnglishName;
             }
             catch
             {
-                return "Language 0x" + id8.Substring(4, 4);
+                result = "Language 0x" + id8.Substring(4, 4);
             }
+            _nameCache[id8] = result;
+            return result;
         }
 
         private static bool _valid(string id8)
@@ -75,7 +82,9 @@ namespace LanguageGuard
             return true;
         }
 
-        // Languages actually installed on this machine (from the keyboard-layout catalog).
+        // Every language Windows can use as an input language: the full NLS catalog
+        // (culture-specific locales, e.g. ar-SA, ar-IQ, en-GB...) merged with the
+        // keyboard layouts actually installed on this machine.
         public static List<string> Installed()
         {
             HashSet<string> set = new HashSet<string>();
@@ -87,9 +96,10 @@ namespace LanguageGuard
                     {
                         foreach (string sub in k.GetSubKeyNames())
                         {
-                            if (sub.Length == 8 && _valid(sub))
+                            if (sub.Length >= 8 && _valid(sub))
                             {
-                                string langId = "0000" + sub.Substring(4, 4);
+                                // An HKL id like "00010409" - the language is the low word.
+                                string langId = "0000" + sub.Substring(sub.Length - 4, 4);
                                 set.Add(langId);
                             }
                         }
@@ -97,6 +107,22 @@ namespace LanguageGuard
                 }
             }
             catch { }
+
+            // Windows "Add a language" catalog = all specific cultures, with no keyboard
+            // required at selection time (Windows downloads the layout when needed).
+            CultureInfo[] cultures;
+            try { cultures = CultureInfo.GetCultures(CultureTypes.SpecificCultures); }
+            catch { cultures = new CultureInfo[0]; }
+            foreach (CultureInfo ci in cultures)
+            {
+                int lcid = 0;
+                try { lcid = ci.LCID; } catch { }
+                if (lcid != 0 && lcid < 0x10000)
+                {
+                    set.Add(string.Format("0000{0:x4}", lcid));
+                }
+            }
+
             List<string> list = new List<string>(set);
             list.Sort(delegate (string a, string b) { return string.Compare(_display(a), _display(b), StringComparison.CurrentCultureIgnoreCase); });
             return list;
@@ -368,6 +394,9 @@ namespace LanguageGuard
     {
         private readonly Guardian _guardian = new Guardian();
         private CheckedListBox _lst;
+        private TextBox _txtFilter;
+        private readonly HashSet<string> _checkedSet = new HashSet<string>();
+        private List<string> _catalog = new List<string>();
         private Button _btnEnable;
         private Button _btnDisable;
         private CheckBox _chkAuto;
@@ -398,15 +427,26 @@ namespace LanguageGuard
             cap.AutoSize = true;
             Controls.Add(cap);
 
+            _txtFilter = new TextBox();
+            _txtFilter.Location = new Point(12, 30);
+            _txtFilter.Size = new Size(406, 22);
+            _txtFilter.TextChanged += delegate { RebuildList(); };
+            Controls.Add(_txtFilter);
+
             _lst = new CheckedListBox();
-            _lst.Location = new Point(12, 30);
-            _lst.Size = new Size(406, 210);
+            _lst.Location = new Point(12, 56);
+            _lst.Size = new Size(406, 196);
             _lst.CheckOnClick = true;
+            _lst.ItemCheck += delegate (object s, ItemCheckEventArgs e)
+            {
+                LangItem it = (LangItem)_lst.Items[e.Index];
+                if (e.NewValue == CheckState.Checked) _checkedSet.Add(it.Id); else _checkedSet.Remove(it.Id);
+            };
             Controls.Add(_lst);
 
             _btnEnable = new Button();
             _btnEnable.Text = "Enable & Protect";
-            _btnEnable.Location = new Point(12, 252);
+            _btnEnable.Location = new Point(12, 260);
             _btnEnable.Size = new Size(195, 34);
             _btnEnable.Click += delegate { EnableGuard(); };
             Controls.Add(_btnEnable);
@@ -421,7 +461,7 @@ namespace LanguageGuard
 
             _chkAuto = new CheckBox();
             _chkAuto.Text = "Start automatically with Windows";
-            _chkAuto.Location = new Point(12, 294);
+            _chkAuto.Location = new Point(12, 302);
             _chkAuto.AutoSize = true;
             _chkAuto.Checked = Settings.GetAutoStart();
             _chkAuto.CheckedChanged += delegate { Settings.SetAutoStart(_chkAuto.Checked, _radBoot.Checked); };
@@ -429,7 +469,7 @@ namespace LanguageGuard
 
             _radAlways = new RadioButton();
             _radAlways.Text = "Keep watching in the background (recommended)";
-            _radAlways.Location = new Point(12, 322);
+            _radAlways.Location = new Point(12, 330);
             _radAlways.AutoSize = true;
             _radAlways.Checked = true;
             _radAlways.CheckedChanged += delegate { if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked); };
@@ -437,33 +477,33 @@ namespace LanguageGuard
 
             _radBoot = new RadioButton();
             _radBoot.Text = "Or: fix languages once at sign-in, then exit";
-            _radBoot.Location = new Point(12, 346);
+            _radBoot.Location = new Point(12, 354);
             _radBoot.AutoSize = true;
             _radBoot.CheckedChanged += delegate { if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked); };
             Controls.Add(_radBoot);
 
             _chkTray = new CheckBox();
             _chkTray.Text = "Minimize to tray (guard keeps running)";
-            _chkTray.Location = new Point(12, 372);
+            _chkTray.Location = new Point(12, 380);
             _chkTray.AutoSize = true;
             _chkTray.Checked = true;
             Controls.Add(_chkTray);
 
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(12, 400);
+            _lblStatus.Location = new Point(12, 408);
             _lblStatus.AutoSize = true;
             _lblStatus.ForeColor = Color.DimGray;
             Controls.Add(_lblStatus);
 
             Label logCap = new Label();
             logCap.Text = "Activity:";
-            logCap.Location = new Point(12, 424);
+            logCap.Location = new Point(12, 432);
             logCap.AutoSize = true;
             Controls.Add(logCap);
 
             _lblLog = new ListBox();
-            _lblLog.Location = new Point(12, 444);
-            _lblLog.Size = new Size(406, 64);
+            _lblLog.Location = new Point(12, 452);
+            _lblLog.Size = new Size(406, 56);
             _lblLog.HorizontalScrollbar = true;
             Controls.Add(_lblLog);
 
@@ -497,13 +537,27 @@ namespace LanguageGuard
             _lblLog.Items.Insert(0, m);
         }
 
+        private void RebuildList()
+        {
+            string f = _txtFilter != null ? _txtFilter.Text.Trim() : "";
+            _lst.BeginUpdate();
+            _lst.Items.Clear();
+            foreach (string id in _catalog)
+            {
+                if (f.Length == 0 || Lang.Display(id).IndexOf(f, StringComparison.CurrentCultureIgnoreCase) >= 0)
+                {
+                    _lst.Items.Add(new LangItem(id), _checkedSet.Contains(id));
+                }
+            }
+            _lst.EndUpdate();
+        }
+
         private void EnableGuard()
         {
             List<string> chosen = new List<string>();
-            foreach (object o in _lst.CheckedItems)
+            foreach (string id in _checkedSet)
             {
-                LangItem it = (LangItem)o;
-                chosen.Add(it.Id);
+                chosen.Add(id);
             }
             if (chosen.Count == 0)
             {
@@ -563,13 +617,10 @@ namespace LanguageGuard
                 allowed = Preload.Get();
             }
 
-            _lst.BeginUpdate();
-            _lst.Items.Clear();
-            foreach (string id in Lang.Installed())
-            {
-                _lst.Items.Add(new LangItem(id), allowed.Contains(id));
-            }
-            _lst.EndUpdate();
+            _catalog = Lang.Installed();
+            _checkedSet.Clear();
+            foreach (string id in allowed) _checkedSet.Add(id);
+            RebuildList();
 
             if (enabled)
             {

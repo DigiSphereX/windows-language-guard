@@ -18,8 +18,9 @@ Get `LanguageGuard.exe` from the
 
 ## Usage
 
-1. Run `LanguageGuard.exe`. The checklist shows every language installed on your
-   system by its real Windows name.
+1. Run `LanguageGuard.exe`. The checklist shows **the full Windows language
+   catalog** (600+ languages, e.g. Arabic (Iraq), English (United Kingdom)) by real
+   name — type in the search box to filter.
 2. Tick the languages you are allowed to type in.
 3. Press **Enable & Protect**. LanguageGuard sits in the tray and enforces your
    choice every 2 seconds.
