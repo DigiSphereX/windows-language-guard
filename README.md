@@ -26,12 +26,21 @@ keeps your choice the only choice:
 ## Usage / الاستخدام
 
 1. Download `LanguageGuard.exe` from the latest release.
-2. Run it. Tick the languages you are allowed to type in.
+2. Run it. Tick the languages you are allowed to type in (shown by real names,
+   just like in Windows).
 3. Press **Enable & Protect**. It sits in the tray and enforces your choice every 2 seconds.
-4. Optional: *Start automatically with Windows* keeps the protection across reboots.
+4. Optional: *Start automatically with Windows* - pick how:
+   - **Keep watching in the background (recommended)** - a tiny tray process guards forever.
+   - **Fix once at sign-in, then exit** - no resident process; it cleans any auto-added
+     language right after logon and closes itself (~90 s).
 
 Settings live under `HKCU\Software\LanguageGuard` — everything is per-user,
 nothing is installed.
+
+> Why a watcher? Windows gives no built-in "never auto-add a language" switch, and it
+> does not announce when an app sneaks a language in. The only reliable, permanent ways
+> are the two above: an always-on lightweight watcher, or a silent one-shot at logon
+> (`LanguageGuard.exe --boot`, used by the Run key).
 
 ## How it works / كيف يعمل
 

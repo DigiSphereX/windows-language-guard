@@ -2,6 +2,14 @@
 
 All notable changes to LanguageGuard are documented here.
 
+## 1.0.1 - 2026-09-12
+
+- Fix: "Balloon tip text must have a non-empty value" crash when protection resumed at startup.
+- Languages now show their real Windows names in the checklist (e.g. "Arabic (Iraq)"),
+  not hex codes; logs show names too.
+- Two protection levels: keep watching in the background, or fix languages once at
+  sign-in and exit (start the app with `--boot`; used by the Run key in that mode).
+
 ## 1.0.0 - 2026-09-12
 
 - First public release. Single portable EXE (no admin, no install).

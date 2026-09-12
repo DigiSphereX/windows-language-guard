@@ -1,5 +1,5 @@
 //
-// LanguageGuard - portable Windows input-language keeper (v1.0.0)
+// LanguageGuard - portable Windows input-language keeper (v1.0.1)
 //
 // Lets you choose which input languages you type in. While it runs, Windows can
 // never silently add another language/keyboard near the clock again: any
@@ -106,6 +106,13 @@ namespace LanguageGuard
         {
             return _display(id8);
         }
+    }
+
+    internal sealed class LangItem
+    {
+        public readonly string Id;
+        public LangItem(string id) { Id = id; }
+        public override string ToString() { return Lang.Display(Id); }
     }
 
     internal static class Preload
@@ -225,14 +232,18 @@ namespace LanguageGuard
             catch { return false; }
         }
 
-        public static void SetAutoStart(bool on)
+        public static void SetAutoStart(bool on, bool bootMode)
         {
             const string runKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
             try
             {
                 using (RegistryKey k = Registry.CurrentUser.CreateSubKey(runKey))
                 {
-                    if (on) k.SetValue("LanguageGuard", "\"" + Application.ExecutablePath + "\"");
+                    if (on)
+                    {
+                        string arg = bootMode ? "\" --boot" : "\"";
+                        k.SetValue("LanguageGuard", "\"" + Application.ExecutablePath + arg);
+                    }
                     else k.DeleteValue("LanguageGuard", false);
                 }
             }
@@ -299,7 +310,7 @@ namespace LanguageGuard
 
             if (changedPreload)
             {
-                _notice("Enforced input languages to: " + string.Join(", ", _allowed.ToArray()));
+                _notice("Enforced languages to: " + NamesOf(_allowed));
                 Preload.Set(_allowed);
             }
 
@@ -317,9 +328,20 @@ namespace LanguageGuard
                 if (h != IntPtr.Zero)
                 {
                     if (fg != IntPtr.Zero) Native.PostMessage(fg, Native.WM_INPUTLANGCHANGEREQUEST, IntPtr.Zero, h);
-                    _notice("Active keyboard " + activeId + " reset to " + first);
+                    _notice("Active keyboard " + Lang.Display(activeId) + " reset to " + Lang.Display(first));
                 }
             }
+        }
+
+        private string NamesOf(List<string> ids)
+        {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(Lang.Display(ids[i]));
+            }
+            return sb.ToString();
         }
 
         private void _notice(string msg)
@@ -349,6 +371,8 @@ namespace LanguageGuard
         private Button _btnEnable;
         private Button _btnDisable;
         private CheckBox _chkAuto;
+        private RadioButton _radAlways;
+        private RadioButton _radBoot;
         private CheckBox _chkTray;
         private Label _lblStatus;
         private ListBox _lblLog;
@@ -360,7 +384,7 @@ namespace LanguageGuard
         public MainForm()
         {
             Text = "LanguageGuard - Keep only the languages you type in";
-            ClientSize = new Size(430, 470);
+            ClientSize = new Size(430, 520);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -397,34 +421,49 @@ namespace LanguageGuard
 
             _chkAuto = new CheckBox();
             _chkAuto.Text = "Start automatically with Windows";
-            _chkAuto.Location = new Point(12, 296);
+            _chkAuto.Location = new Point(12, 294);
             _chkAuto.AutoSize = true;
             _chkAuto.Checked = Settings.GetAutoStart();
-            _chkAuto.CheckedChanged += delegate { Settings.SetAutoStart(_chkAuto.Checked); };
+            _chkAuto.CheckedChanged += delegate { Settings.SetAutoStart(_chkAuto.Checked, _radBoot.Checked); };
             Controls.Add(_chkAuto);
+
+            _radAlways = new RadioButton();
+            _radAlways.Text = "Keep watching in the background (recommended)";
+            _radAlways.Location = new Point(12, 322);
+            _radAlways.AutoSize = true;
+            _radAlways.Checked = true;
+            _radAlways.CheckedChanged += delegate { if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked); };
+            Controls.Add(_radAlways);
+
+            _radBoot = new RadioButton();
+            _radBoot.Text = "Or: fix languages once at sign-in, then exit";
+            _radBoot.Location = new Point(12, 346);
+            _radBoot.AutoSize = true;
+            _radBoot.CheckedChanged += delegate { if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked); };
+            Controls.Add(_radBoot);
 
             _chkTray = new CheckBox();
             _chkTray.Text = "Minimize to tray (guard keeps running)";
-            _chkTray.Location = new Point(12, 322);
+            _chkTray.Location = new Point(12, 372);
             _chkTray.AutoSize = true;
             _chkTray.Checked = true;
             Controls.Add(_chkTray);
 
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(12, 352);
+            _lblStatus.Location = new Point(12, 400);
             _lblStatus.AutoSize = true;
             _lblStatus.ForeColor = Color.DimGray;
             Controls.Add(_lblStatus);
 
             Label logCap = new Label();
             logCap.Text = "Activity:";
-            logCap.Location = new Point(12, 378);
+            logCap.Location = new Point(12, 424);
             logCap.AutoSize = true;
             Controls.Add(logCap);
 
             _lblLog = new ListBox();
-            _lblLog.Location = new Point(12, 398);
-            _lblLog.Size = new Size(406, 60);
+            _lblLog.Location = new Point(12, 444);
+            _lblLog.Size = new Size(406, 64);
             _lblLog.HorizontalScrollbar = true;
             Controls.Add(_lblLog);
 
@@ -463,8 +502,8 @@ namespace LanguageGuard
             List<string> chosen = new List<string>();
             foreach (object o in _lst.CheckedItems)
             {
-                string id = (string)o;
-                chosen.Add(id);
+                LangItem it = (LangItem)o;
+                chosen.Add(it.Id);
             }
             if (chosen.Count == 0)
             {
@@ -480,10 +519,11 @@ namespace LanguageGuard
             _btnEnable.Enabled = false;
             _btnDisable.Enabled = true;
             SetStatus(true);
+            string names = string.Join(", ", Lang.Display(chosen[0]) + (chosen.Count > 1 ? ", ..." : ""));
             _tray.BalloonTipTitle = "LanguageGuard";
-            _tray.BalloonTipText = "Protecting " + chosen.Count + " language(s). No other language can be added automatically.";
-            _tray.ShowBalloonTip(3000);
-            AddLog("Protection ON for: " + string.Join(", ", chosen.ToArray()));
+            _tray.BalloonTipText = "Protecting " + chosen.Count + " language(s): " + names;
+            try { _tray.ShowBalloonTip(3000); } catch { }
+            AddLog("Protection ON for: " + names);
             if (_chkTray.Checked && !ShowInTaskbar)
             {
                 Show();
@@ -527,7 +567,7 @@ namespace LanguageGuard
             _lst.Items.Clear();
             foreach (string id in Lang.Installed())
             {
-                _lst.Items.Add(id, allowed.Contains(id));
+                _lst.Items.Add(new LangItem(id), allowed.Contains(id));
             }
             _lst.EndUpdate();
 
@@ -573,9 +613,11 @@ namespace LanguageGuard
         public void RunAfterLoad()
         {
             // If protection was previously on, start quietly in the tray.
-            if (Settings.GetEnabled() && _chkTray.Checked)
+            if (Settings.GetEnabled() && _guardian.AllowedList.Count > 0 && _chkTray.Checked)
             {
-                _tray.ShowBalloonTip(2500);
+                _tray.BalloonTipTitle = "LanguageGuard";
+                _tray.BalloonTipText = "Protecting " + _guardian.AllowedList.Count + " language(s).";
+                try { _tray.ShowBalloonTip(2000); } catch { }
                 Hide();
             }
         }
@@ -584,15 +626,20 @@ namespace LanguageGuard
     internal static class Program
     {
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
+            bool boot = Array.IndexOf(args, "--boot") >= 0;
             bool created;
             using (Mutex m = new Mutex(true, "Local\\LanguageGuardSingleInstance", out created))
             {
                 if (!created)
                 {
-                    MessageBox.Show("LanguageGuard is already running (look in the tray).",
-                        "LanguageGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // A full instance is already running - nothing to do.
+                    return;
+                }
+                if (boot)
+                {
+                    RunBootCheck();
                     return;
                 }
                 Application.EnableVisualStyles();
@@ -601,6 +648,32 @@ namespace LanguageGuard
                 f.Shown += delegate { f.EnsureLoaded(); f.RunAfterLoad(); };
                 Application.Run(f);
             }
+        }
+
+        // Silent mode started from the Run key: enforce the saved list for ~90 seconds
+        // (long enough to revert anything Windows re-added at logon), then exit quietly.
+        private static void RunBootCheck()
+        {
+            if (!Settings.GetEnabled()) return;
+            List<string> allowed = Settings.GetAllowed();
+            if (allowed.Count == 0) return;
+
+            Guardian g = new Guardian();
+            g.SetAllowed(allowed);
+            Application.EnableVisualStyles();
+            ApplicationContext ctx = new ApplicationContext();
+            WTimer t = new WTimer();
+            t.Interval = 2000;
+            int ticks = 0;
+            t.Tick += delegate
+            {
+                try { g.Enforce(); } catch { }
+                ticks++;
+                if (ticks >= 45) { t.Stop(); ctx.ExitThread(); }
+            };
+            t.Start();
+            try { g.Enforce(); } catch { }
+            Application.Run(ctx);
         }
     }
 }
