@@ -1,0 +1,9 @@
+# LanguageGuard / build artifacts (the portable EXE is published via GitHub Releases)
+LanguageGuard.exe
+
+# Editor / OS junk
+.DS_Store
+Thumbs.db
+.vs/
+*.user
+*.suo
