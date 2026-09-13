@@ -2,6 +2,11 @@
 
 All notable changes to LanguageGuard are documented here.
 
+## 1.0.5 - 2026-09-13
+
+- About dialog now shows a short disclaimer (use at your own risk, back up settings).
+- README gained a "Disclaimer / Backup advice" section.
+
 ## 1.0.4 - 2026-09-13
 
 - New menu bar with the main options: Protection (Enable / Release),

@@ -1,5 +1,5 @@
 //
-// LanguageGuard - portable Windows input-language keeper (v1.0.4)
+// LanguageGuard - portable Windows input-language keeper (v1.0.5)
 //
 // Lets you choose which input languages you type in. While it runs, Windows can
 // never silently add another language/keyboard near the clock again: any
@@ -27,9 +27,9 @@ using WTimer = System.Windows.Forms.Timer;
 [assembly: AssemblyDescription("Keep only the input languages you type in.")]
 [assembly: AssemblyCompany("DigiSphereX")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 M. Basheer (DigiSphereX)")]
-[assembly: AssemblyVersion("1.0.4.0")]
-[assembly: AssemblyFileVersion("1.0.4.0")]
+[assembly: AssemblyVersion("1.0.5.0")]
 
+[assembly: AssemblyFileVersion("1.0.5.0")]
 namespace LanguageGuard
 {
     internal static class Native
@@ -169,7 +169,7 @@ namespace LanguageGuard
 
     internal static class AppInfo
     {
-        public const string Version = "1.0.4";
+        public const string Version = "1.0.5";
         public const string RepoUrl = "https://github.com/DigiSphereX/windows-language-guard";
     }
 
@@ -790,7 +790,7 @@ namespace LanguageGuard
         public AboutBox()
         {
             Text = "About LanguageGuard";
-            ClientSize = new Size(362, 216);
+            ClientSize = new Size(362, 300);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
@@ -831,9 +831,16 @@ namespace LanguageGuard
             git.LinkClicked += delegate { try { Process.Start(AppInfo.RepoUrl); } catch { } };
             Controls.Add(git);
 
+            Label disc = new Label();
+            disc.Text = "Use at your own risk. Even though this tool is tested, a program sitting in\r\nyour background can always behave unexpectedly - back up your settings /\r\ncreate a restore point, and don't grant it privileges you don't trust.";
+            disc.Location = new Point(16, 180);
+            disc.Size = new Size(330, 54);
+            disc.ForeColor = Color.FromArgb(150, 20, 20);
+            Controls.Add(disc);
+
             Button close = new Button();
             close.Text = "Close";
-            close.Location = new Point(266, 182);
+            close.Location = new Point(266, 264);
             close.Size = new Size(80, 25);
             close.Click += delegate { Close(); };
             Controls.Add(close);

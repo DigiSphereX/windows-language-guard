@@ -75,6 +75,17 @@ with Windows (`csc.exe`). The icon is generated at build time.
 - Windows 10 or 11
 - .NET Framework 4.x (pre-installed on every Windows 10/11 installation)
 
+## Disclaimer / Backup advice
+
+Use at your own risk. Even though LanguageGuard is tested, a program that runs in
+the background can behave unexpectedly on a specific machine:
+
+- Back up your input-language settings (or create a restore point) before using it.
+- Read the source before running the binary if you like — everything is plain C#.
+- LanguageGuard needs no admin rights; do not grant it privileges it doesn't ask for.
+
+The author is not responsible for any unintentional damage or data loss.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
