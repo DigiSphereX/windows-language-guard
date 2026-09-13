@@ -2,6 +2,11 @@
 
 All notable changes to LanguageGuard are documented here.
 
+## 1.0.3 - 2026-09-12
+
+- On any computer, opening the program now detects the languages currently selected
+  in Windows and shows them already checked (working alongside the saved allow-list).
+
 ## 1.0.2 - 2026-09-12
 
 - New: the checklist now contains the **full Windows "Add a language" catalog**

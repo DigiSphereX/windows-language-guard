@@ -1,5 +1,5 @@
 //
-// LanguageGuard - portable Windows input-language keeper (v1.0.2)
+// LanguageGuard - portable Windows input-language keeper (v1.0.3)
 //
 // Lets you choose which input languages you type in. While it runs, Windows can
 // never silently add another language/keyboard near the clock again: any
@@ -139,6 +139,22 @@ namespace LanguageGuard
         public readonly string Id;
         public LangItem(string id) { Id = id; }
         public override string ToString() { return Lang.Display(Id); }
+    }
+
+    internal static class Detect
+    {
+        // Languages currently selected in Windows (Preload), merged with the saved
+        // allow-list - exactly what gets pre-checked when the window opens.
+        public static List<string> Selected()
+        {
+            List<string> current = Preload.Get();
+            List<string> saved = Settings.GetAllowed();
+            List<string> pre = new List<string>();
+            HashSet<string> seen = new HashSet<string>();
+            foreach (string id in current) if (seen.Add(id)) pre.Add(id);
+            foreach (string id in saved) if (seen.Add(id)) pre.Add(id);
+            return pre;
+        }
     }
 
     internal static class Preload
@@ -607,38 +623,35 @@ namespace LanguageGuard
 
         public void EnsureLoaded()
         {
-            List<string> allowed = Settings.GetAllowed();
+            List<string> saved = Settings.GetAllowed();
             bool enabled = Settings.GetEnabled();
 
-            if (allowed.Count == 0 && !enabled)
-            {
-                // Cold start, nothing configured yet: show the current languages
-                // as pre-selected suggestions but do NOT start protecting anything.
-                allowed = Preload.Get();
-            }
+            // Detect the languages currently chosen in Windows (Preload) on THIS
+            // machine and pre-check them, merged with any saved allow-list - so on any
+            // computer the program opens with the selected languages already ticked.
+            List<string> pre = Detect.Selected();
 
             _catalog = Lang.Installed();
             _checkedSet.Clear();
-            foreach (string id in allowed) _checkedSet.Add(id);
+            foreach (string id in pre) _checkedSet.Add(id);
             RebuildList();
 
             if (enabled)
             {
-                if (allowed.Count == 0)
+                if (saved.Count == 0)
                 {
                     // Corrupt/missing allow-list while protection was supposed to be on:
                     // stop protection instead of silently guarding whatever is in Preload
                     // (that could include a language Windows auto-added).
                     Settings.SetEnabled(false);
-                    allowed = Preload.Get();
                     _btnEnable.Enabled = true;
                     _btnDisable.Enabled = false;
-                    SetStatus(false);
-                    AddLog("Saved language list was unreadable - protection OFF. Re-select and press Enable & Protect.");
+                    _lblStatus.Text = "Saved list was unreadable - protection OFF. Review the checked languages and press Enable & Protect.";
+                    AddLog("Saved language list was unreadable - protection OFF. Review the checked languages and press Enable & Protect.");
                 }
                 else
                 {
-                    _guardian.SetAllowed(allowed);
+                    _guardian.SetAllowed(saved);
                     _guardTimer.Start();
                     _btnEnable.Enabled = false;
                     _btnDisable.Enabled = true;
@@ -648,7 +661,7 @@ namespace LanguageGuard
             }
             else
             {
-                SetStatus(false);
+                _lblStatus.Text = "Detected " + pre.Count + " language(s) from Windows - already ticked. Press Enable & Protect to lock them.";
             }
 
             string log = Settings.ReadLog();
@@ -680,12 +693,18 @@ namespace LanguageGuard
         private static void Main(string[] args)
         {
             bool boot = Array.IndexOf(args, "--boot") >= 0;
+            bool selftest = Array.IndexOf(args, "--selftest") >= 0;
             bool created;
             using (Mutex m = new Mutex(true, "Local\\LanguageGuardSingleInstance", out created))
             {
                 if (!created)
                 {
                     // A full instance is already running - nothing to do.
+                    return;
+                }
+                if (selftest)
+                {
+                    RunSelftest();
                     return;
                 }
                 if (boot)
@@ -699,6 +718,21 @@ namespace LanguageGuard
                 f.Shown += delegate { f.EnsureLoaded(); f.RunAfterLoad(); };
                 Application.Run(f);
             }
+        }
+
+        // Hidden diagnostic: write the current "detect + merge" result to a temp file
+        // (same code path the window uses when it pre-checks the list).
+        private static void RunSelftest()
+        {
+            StringBuilder sb = new StringBuilder();
+            List<string> sel = Detect.Selected();
+            for (int i = 0; i < sel.Count; i++)
+            {
+                if (i > 0) sb.Append(";");
+                sb.Append(Lang.Display(sel[i]));
+            }
+            try { System.IO.File.WriteAllText(System.IO.Path.GetTempPath() + "lg_selftest.txt", sb.ToString()); }
+            catch { }
         }
 
         // Silent mode started from the Run key: enforce the saved list for ~90 seconds
