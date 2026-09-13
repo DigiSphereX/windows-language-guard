@@ -1,5 +1,7 @@
 # LanguageGuard
 
+[![Donate](https://img.shields.io/badge/Donate-PayPal-0070BA)](https://www.paypal.com/donate/?hosted_button_id=CFANQH892RPH2)
+
 Keep only the input languages you type in. Windows silently adds input languages
 next to the clock — LanguageGuard stops it permanently.
 
@@ -91,3 +93,10 @@ The author is not responsible for any unintentional damage or data loss.
 MIT — see [LICENSE](LICENSE).
 
 Copyright (c) 2026 M. Basheer (DigiSphereX)
+
+## ☕ Support this project
+
+Free and open source (MIT). If this project saved you time or money, consider a small thank-you:
+
+- **GitHub Sponsors** -> https://github.com/sponsors/DigiSphereX
+- **PayPal** -> https://www.paypal.com/donate/?hosted_button_id=CFANQH892RPH2
