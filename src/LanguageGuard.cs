@@ -1,5 +1,5 @@
 //
-// LanguageGuard - portable Windows input-language keeper (v1.0.3)
+// LanguageGuard - portable Windows input-language keeper (v1.0.4)
 //
 // Lets you choose which input languages you type in. While it runs, Windows can
 // never silently add another language/keyboard near the clock again: any
@@ -11,14 +11,24 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using WTimer = System.Windows.Forms.Timer;
+
+[assembly: AssemblyTitle("LanguageGuard")]
+[assembly: AssemblyProduct("LanguageGuard")]
+[assembly: AssemblyDescription("Keep only the input languages you type in.")]
+[assembly: AssemblyCompany("DigiSphereX")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 M. Basheer (DigiSphereX)")]
+[assembly: AssemblyVersion("1.0.4.0")]
+[assembly: AssemblyFileVersion("1.0.4.0")]
 
 namespace LanguageGuard
 {
@@ -155,6 +165,12 @@ namespace LanguageGuard
             foreach (string id in saved) if (seen.Add(id)) pre.Add(id);
             return pre;
         }
+    }
+
+    internal static class AppInfo
+    {
+        public const string Version = "1.0.4";
+        public const string RepoUrl = "https://github.com/DigiSphereX/windows-language-guard";
     }
 
     internal static class Preload
@@ -421,6 +437,13 @@ namespace LanguageGuard
         private CheckBox _chkTray;
         private Label _lblStatus;
         private ListBox _lblLog;
+        private MenuStrip _menu;
+        private ToolStripMenuItem _miProtectOn;
+        private ToolStripMenuItem _miProtectOff;
+        private ToolStripMenuItem _miAutoStart;
+        private ToolStripMenuItem _miModeAlways;
+        private ToolStripMenuItem _miModeBoot;
+        private ToolStripMenuItem _miTray;
         private WTimer _guardTimer;
         private NotifyIcon _tray;
         private ContextMenuStrip _trayMenu;
@@ -429,28 +452,29 @@ namespace LanguageGuard
         public MainForm()
         {
             Text = "LanguageGuard - Keep only the languages you type in";
-            ClientSize = new Size(430, 520);
+            ClientSize = new Size(430, 536);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             _guardian.OnEvent += delegate (string m) { AddLog(m); };
+            BuildMenu();
 
             Label cap = new Label();
             cap.Text = "Allowed input languages (checked):";
-            cap.Location = new Point(12, 10);
+            cap.Location = new Point(12, 36);
             cap.AutoSize = true;
             Controls.Add(cap);
 
             _txtFilter = new TextBox();
-            _txtFilter.Location = new Point(12, 30);
+            _txtFilter.Location = new Point(12, 56);
             _txtFilter.Size = new Size(406, 22);
             _txtFilter.TextChanged += delegate { RebuildList(); };
             Controls.Add(_txtFilter);
 
             _lst = new CheckedListBox();
-            _lst.Location = new Point(12, 56);
+            _lst.Location = new Point(12, 82);
             _lst.Size = new Size(406, 196);
             _lst.CheckOnClick = true;
             _lst.ItemCheck += delegate (object s, ItemCheckEventArgs e)
@@ -462,14 +486,14 @@ namespace LanguageGuard
 
             _btnEnable = new Button();
             _btnEnable.Text = "Enable & Protect";
-            _btnEnable.Location = new Point(12, 260);
+            _btnEnable.Location = new Point(12, 288);
             _btnEnable.Size = new Size(195, 34);
             _btnEnable.Click += delegate { EnableGuard(); };
             Controls.Add(_btnEnable);
 
             _btnDisable = new Button();
             _btnDisable.Text = "Release all";
-            _btnDisable.Location = new Point(223, 252);
+            _btnDisable.Location = new Point(223, 288);
             _btnDisable.Size = new Size(195, 34);
             _btnDisable.Enabled = false;
             _btnDisable.Click += delegate { DisableGuard(); };
@@ -477,49 +501,64 @@ namespace LanguageGuard
 
             _chkAuto = new CheckBox();
             _chkAuto.Text = "Start automatically with Windows";
-            _chkAuto.Location = new Point(12, 302);
+            _chkAuto.Location = new Point(12, 330);
             _chkAuto.AutoSize = true;
             _chkAuto.Checked = Settings.GetAutoStart();
-            _chkAuto.CheckedChanged += delegate { Settings.SetAutoStart(_chkAuto.Checked, _radBoot.Checked); };
+            _chkAuto.CheckedChanged += delegate
+            {
+                Settings.SetAutoStart(_chkAuto.Checked, _radBoot.Checked);
+                if (_miAutoStart != null) _miAutoStart.Checked = _chkAuto.Checked;
+            };
             Controls.Add(_chkAuto);
 
             _radAlways = new RadioButton();
             _radAlways.Text = "Keep watching in the background (recommended)";
-            _radAlways.Location = new Point(12, 330);
+            _radAlways.Location = new Point(12, 358);
             _radAlways.AutoSize = true;
             _radAlways.Checked = true;
-            _radAlways.CheckedChanged += delegate { if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked); };
+            _radAlways.CheckedChanged += delegate
+            {
+                if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked);
+                if (_miModeAlways != null) _miModeAlways.Checked = _radAlways.Checked;
+                if (_miModeBoot != null) _miModeBoot.Checked = _radBoot.Checked;
+            };
             Controls.Add(_radAlways);
 
             _radBoot = new RadioButton();
             _radBoot.Text = "Or: fix languages once at sign-in, then exit";
-            _radBoot.Location = new Point(12, 354);
+            _radBoot.Location = new Point(12, 382);
             _radBoot.AutoSize = true;
-            _radBoot.CheckedChanged += delegate { if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked); };
+            _radBoot.CheckedChanged += delegate
+            {
+                if (_chkAuto.Checked) Settings.SetAutoStart(true, _radBoot.Checked);
+                if (_miModeAlways != null) _miModeAlways.Checked = _radAlways.Checked;
+                if (_miModeBoot != null) _miModeBoot.Checked = _radBoot.Checked;
+            };
             Controls.Add(_radBoot);
 
             _chkTray = new CheckBox();
             _chkTray.Text = "Minimize to tray (guard keeps running)";
-            _chkTray.Location = new Point(12, 380);
+            _chkTray.Location = new Point(12, 408);
             _chkTray.AutoSize = true;
             _chkTray.Checked = true;
+            _chkTray.CheckedChanged += delegate { if (_miTray != null) _miTray.Checked = _chkTray.Checked; };
             Controls.Add(_chkTray);
 
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(12, 408);
+            _lblStatus.Location = new Point(12, 436);
             _lblStatus.AutoSize = true;
             _lblStatus.ForeColor = Color.DimGray;
             Controls.Add(_lblStatus);
 
             Label logCap = new Label();
             logCap.Text = "Activity:";
-            logCap.Location = new Point(12, 432);
+            logCap.Location = new Point(12, 460);
             logCap.AutoSize = true;
             Controls.Add(logCap);
 
             _lblLog = new ListBox();
-            _lblLog.Location = new Point(12, 452);
-            _lblLog.Size = new Size(406, 56);
+            _lblLog.Location = new Point(12, 480);
+            _lblLog.Size = new Size(406, 50);
             _lblLog.HorizontalScrollbar = true;
             Controls.Add(_lblLog);
 
@@ -551,6 +590,57 @@ namespace LanguageGuard
         {
             if (_lblLog.Items.Count > 300) _lblLog.Items.Clear();
             _lblLog.Items.Insert(0, m);
+        }
+
+        private void BuildMenu()
+        {
+            _menu = new MenuStrip();
+
+            _miProtectOn = new ToolStripMenuItem("Enable & Protect");
+            _miProtectOn.Click += delegate { EnableGuard(); };
+            _miProtectOff = new ToolStripMenuItem("Release");
+            _miProtectOff.Enabled = false;
+            _miProtectOff.Click += delegate { DisableGuard(); };
+
+            ToolStripMenuItem mPro = new ToolStripMenuItem("Protection");
+            mPro.DropDownItems.Add(_miProtectOn);
+            mPro.DropDownItems.Add(_miProtectOff);
+
+            _miAutoStart = new ToolStripMenuItem("Start automatically with Windows");
+            _miAutoStart.CheckOnClick = true;
+            _miAutoStart.Checked = Settings.GetAutoStart();
+            _miAutoStart.Click += delegate { _chkAuto.Checked = _miAutoStart.Checked; };
+
+            _miModeAlways = new ToolStripMenuItem("Keep watching in the background");
+            _miModeAlways.Click += delegate { _radAlways.Checked = true; };
+            _miModeBoot = new ToolStripMenuItem("Fix once at sign-in, then exit");
+            _miModeBoot.Click += delegate { _radBoot.Checked = true; };
+
+            _miTray = new ToolStripMenuItem("Minimize to tray");
+            _miTray.CheckOnClick = true;
+            _miTray.Checked = true;
+            _miTray.Click += delegate { _chkTray.Checked = _miTray.Checked; };
+
+            ToolStripMenuItem mOpt = new ToolStripMenuItem("Options");
+            mOpt.DropDownItems.Add(_miAutoStart);
+            mOpt.DropDownItems.Add(new ToolStripSeparator());
+            mOpt.DropDownItems.Add(_miModeAlways);
+            mOpt.DropDownItems.Add(_miModeBoot);
+            mOpt.DropDownItems.Add(new ToolStripSeparator());
+            mOpt.DropDownItems.Add(_miTray);
+
+            ToolStripMenuItem miAbout = new ToolStripMenuItem("About LanguageGuard");
+            miAbout.Click += delegate { using (AboutBox a = new AboutBox()) a.ShowDialog(this); };
+            ToolStripMenuItem miGit = new ToolStripMenuItem("Open GitHub page");
+            miGit.Click += delegate { try { Process.Start(AppInfo.RepoUrl); } catch { } };
+
+            ToolStripMenuItem mHelp = new ToolStripMenuItem("Help");
+            mHelp.DropDownItems.Add(miAbout);
+            mHelp.DropDownItems.Add(miGit);
+
+            _menu.Items.AddRange(new ToolStripItem[] { mPro, mOpt, mHelp });
+            Controls.Add(_menu);
+            MainMenuStrip = _menu;
         }
 
         private void RebuildList()
@@ -588,6 +678,8 @@ namespace LanguageGuard
             _guardTimer.Start();
             _btnEnable.Enabled = false;
             _btnDisable.Enabled = true;
+            if (_miProtectOn != null) _miProtectOn.Enabled = false;
+            if (_miProtectOff != null) _miProtectOff.Enabled = true;
             SetStatus(true);
             string names = string.Join(", ", Lang.Display(chosen[0]) + (chosen.Count > 1 ? ", ..." : ""));
             _tray.BalloonTipTitle = "LanguageGuard";
@@ -607,6 +699,8 @@ namespace LanguageGuard
             Settings.SetEnabled(false);
             _btnEnable.Enabled = true;
             _btnDisable.Enabled = false;
+            if (_miProtectOn != null) _miProtectOn.Enabled = true;
+            if (_miProtectOff != null) _miProtectOff.Enabled = false;
             SetStatus(false);
             _tray.BalloonTipTitle = "LanguageGuard";
             _tray.BalloonTipText = "Protection OFF - Windows is back in charge of languages.";
@@ -646,6 +740,8 @@ namespace LanguageGuard
                     Settings.SetEnabled(false);
                     _btnEnable.Enabled = true;
                     _btnDisable.Enabled = false;
+                    if (_miProtectOn != null) _miProtectOn.Enabled = true;
+                    if (_miProtectOff != null) _miProtectOff.Enabled = false;
                     _lblStatus.Text = "Saved list was unreadable - protection OFF. Review the checked languages and press Enable & Protect.";
                     AddLog("Saved language list was unreadable - protection OFF. Review the checked languages and press Enable & Protect.");
                 }
@@ -655,6 +751,8 @@ namespace LanguageGuard
                     _guardTimer.Start();
                     _btnEnable.Enabled = false;
                     _btnDisable.Enabled = true;
+                    if (_miProtectOn != null) _miProtectOn.Enabled = false;
+                    if (_miProtectOff != null) _miProtectOff.Enabled = true;
                     SetStatus(true);
                     AddLog("Resumed from saved settings. Protection active.");
                 }
@@ -684,6 +782,72 @@ namespace LanguageGuard
                 try { _tray.ShowBalloonTip(2000); } catch { }
                 Hide();
             }
+        }
+    }
+
+    internal sealed class AboutBox : Form
+    {
+        public AboutBox()
+        {
+            Text = "About LanguageGuard";
+            ClientSize = new Size(362, 216);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MinimizeBox = false;
+            MaximizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+            Label t = new Label();
+            t.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
+            t.Text = "LanguageGuard";
+            t.Location = new Point(16, 12);
+            t.AutoSize = true;
+            Controls.Add(t);
+
+            Label ver = new Label();
+            ver.Text = "Version " + AppInfo.Version;
+            ver.Location = new Point(16, 44);
+            ver.AutoSize = true;
+            Controls.Add(ver);
+
+            Label desc = new Label();
+            desc.Text = "Keep only the input languages you type in. Any language\r\nWindows auto-adds is removed within seconds - portable,\r\nno installation, no admin rights.";
+            desc.Location = new Point(16, 68);
+            desc.Size = new Size(330, 60);
+            Controls.Add(desc);
+
+            Label lic = new Label();
+            lic.Text = "MIT License  |  " + AssemblyCopyright();
+            lic.Location = new Point(16, 134);
+            lic.AutoSize = true;
+            lic.ForeColor = Color.FromArgb(80, 80, 80);
+            Controls.Add(lic);
+
+            LinkLabel git = new LinkLabel();
+            git.Text = "GitHub: DigiSphereX/windows-language-guard";
+            git.Location = new Point(16, 156);
+            git.AutoSize = true;
+            git.LinkClicked += delegate { try { Process.Start(AppInfo.RepoUrl); } catch { } };
+            Controls.Add(git);
+
+            Button close = new Button();
+            close.Text = "Close";
+            close.Location = new Point(266, 182);
+            close.Size = new Size(80, 25);
+            close.Click += delegate { Close(); };
+            Controls.Add(close);
+        }
+
+        private static string AssemblyCopyright()
+        {
+            try
+            {
+                object[] attrs = typeof(AboutBox).Assembly.GetCustomAttributes(typeof(AssemblyCopyrightAttribute), false);
+                if (attrs != null && attrs.Length > 0) return ((AssemblyCopyrightAttribute)attrs[0]).Copyright;
+            }
+            catch { }
+            return "Copyright (c) 2026";
         }
     }
 

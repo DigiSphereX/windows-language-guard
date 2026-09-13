@@ -2,6 +2,14 @@
 
 All notable changes to LanguageGuard are documented here.
 
+## 1.0.4 - 2026-09-13
+
+- New menu bar with the main options: Protection (Enable / Release),
+  Options (autostart, background vs sign-in mode, tray), and Help.
+- New About dialog (Help -> About) showing program name, version, description,
+  author and a GitHub link.
+- EXE now carries proper file version info (1.0.4.0).
+
 ## 1.0.3 - 2026-09-12
 
 - On any computer, opening the program now detects the languages currently selected
