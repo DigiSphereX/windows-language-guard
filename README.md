@@ -20,12 +20,17 @@ Get `LanguageGuard.exe` from the
 
 ## Usage
 
-1. Run `LanguageGuard.exe`. The checklist shows **the full Windows language
-   catalog** (600+ languages, e.g. Arabic (Iraq), English (United Kingdom)) by real
-   name — type in the search box to filter. The languages currently selected in
-   Windows on this machine are already ticked.
-2. Tick the languages you are allowed to type in.
-3. Press **Enable & Protect**. LanguageGuard sits in the tray and enforces your
+1. Run `LanguageGuard.exe`. The **System state (detected)** panel on top shows the
+   real languages installed/selected in Windows on this machine (the Windows
+   display language is included) and the typing languages shown next to the clock.
+   If a typing language is **not** actually installed as a Windows language, it is
+   listed in orange — that is the kind of language this tool lets you clean up.
+2. The checklist shows **the full Windows language catalog** (600+ languages,
+   e.g. Arabic (Iraq), English (United Kingdom)) by real name — type in the search
+   box to filter. The languages currently selected in Windows on this machine are
+   already ticked.
+3. Tick the languages you are allowed to type in.
+4. Press **Enable & Protect**. LanguageGuard sits in the tray and enforces your
    choice every 2 seconds.
 
 ### Startup options

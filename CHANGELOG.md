@@ -2,6 +2,24 @@
 
 All notable changes to LanguageGuard are documented here.
 
+## 1.0.6 - 2026-09-15
+
+- New **"System state (detected)"** panel on top of the window shows the real
+  languages installed/selected in Windows on this PC — including the Windows
+  display language (e.g. English (United States)) — and the typing languages that
+  appear next to the clock.
+- Any typing language that is **not** actually installed as a Windows language
+  (e.g. one Windows sneaked in as "basic typing") is flagged in orange, so you can
+  see exactly what the guard is cleaning up.
+- Detection reads the same sources Windows Settings uses:
+  `HKCU\Control Panel\International\User Profile` (`Languages` + `WindowsOverride`
+  = display language) for installed languages, and `HKCU\Keyboard Layout\Preload`
+  for the typing languages next to the clock.
+- Cleaner interface: real Windows language names only
+  (e.g. "German (Germany)", "Arabic (Iraq)") — no more hex codes in the UI.
+- `--selftest` now also dumps the detected lists (WindowsInstalled / Typing /
+  TypingNotInstalled) to `%TEMP%\lg_selftest.txt` for verification without a GUI.
+
 ## 1.0.5 - 2026-09-13
 
 - About dialog now shows a short disclaimer (use at your own risk, back up settings).

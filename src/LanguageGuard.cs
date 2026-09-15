@@ -1,10 +1,14 @@
 //
-// LanguageGuard - portable Windows input-language keeper (v1.0.5)
+// LanguageGuard - portable Windows input-language keeper (v1.0.6)
 //
 // Lets you choose which input languages you type in. While it runs, Windows can
 // never silently add another language/keyboard near the clock again: any
 // auto-added language is removed and the active keyboard is forced back to an
 // allowed one within seconds. Per-user, no admin rights needed, single EXE.
+//
+// v1.0.6 also shows the detected system state up front: which Windows languages
+// are installed/selected, which typing languages appear next to the clock, and
+// which typing languages are NOT actually installed as Windows languages.
 //
 // MIT License  (c) 2026 M. Basheer (DigiSphereX)
 //
@@ -27,9 +31,9 @@ using WTimer = System.Windows.Forms.Timer;
 [assembly: AssemblyDescription("Keep only the input languages you type in.")]
 [assembly: AssemblyCompany("DigiSphereX")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 M. Basheer (DigiSphereX)")]
-[assembly: AssemblyVersion("1.0.5.0")]
+[assembly: AssemblyVersion("1.0.6.0")]
 
-[assembly: AssemblyFileVersion("1.0.5.0")]
+[assembly: AssemblyFileVersion("1.0.6.0")]
 namespace LanguageGuard
 {
     internal static class Native
@@ -165,11 +169,106 @@ namespace LanguageGuard
             foreach (string id in saved) if (seen.Add(id)) pre.Add(id);
             return pre;
         }
+
+        // Windows languages shown in Settings > Time & Language > Language:
+        // the preferred languages (REG_MULTI_SZ "Languages": BCP-47 tags) plus the
+        // Windows display language ("WindowsOverride", shown on top of that page).
+        // Returned as HKL ids ("00000407") in display order (display lang first).
+        public static List<string> WindowsInstalled()
+        {
+            List<string> result = new List<string>();
+            try
+            {
+                // 1) Windows display language (top of the Settings language page).
+                string display = (string)Registry.GetValue(
+                    @"HKEY_CURRENT_USER\Control Panel\International\User Profile",
+                    "WindowsOverride", null);
+                if (!string.IsNullOrWhiteSpace(display))
+                {
+                    string id = TagToId(display);
+                    if (id != null) AddUnique(result, id);
+                }
+
+                // 2) Preferred languages list (REG_MULTI_SZ of BCP-47 tags).
+                string[] langs = (string[])Registry.GetValue(
+                    @"HKEY_CURRENT_USER\Control Panel\International\User Profile",
+                    "Languages", null);
+                if (langs != null)
+                {
+                    foreach (string tag in langs)
+                    {
+                        string id = TagToId(tag);
+                        if (id != null) AddUnique(result, id);
+                    }
+                }
+            }
+            catch { }
+            return result;
+        }
+
+        // Typing languages shown next to the clock (HKCU\Keyboard Layout\Preload).
+        public static List<string> Typing()
+        {
+            return Preload.Get();
+        }
+
+        // Typing languages that Windows placed next to the clock but that are not
+        // part of the installed/selected Windows languages. These exist as
+        // "basic typing" input only - exactly the kind of auto-added language this
+        // tool lets you clean up.
+        public static List<string> TypingButNotInstalled()
+        {
+            HashSet<string> installed = new HashSet<string>();
+            foreach (string id in WindowsInstalled())
+            {
+                string name = IdToCultureName(id);
+                if (name != null) installed.Add(name);
+            }
+            List<string> result = new List<string>();
+            foreach (string id in Typing())
+            {
+                string name = IdToCultureName(id);
+                if (name == null) { AddUnique(result, id); continue; }
+                if (!installed.Contains(name)) AddUnique(result, id);
+            }
+            return result;
+        }
+
+        // "de-DE" -> "00000407" (or null if unrecognised).
+        private static string TagToId(string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return null;
+            try
+            {
+                CultureInfo ci = CultureInfo.GetCultureInfo(tag);
+                if (ci.LCID != 0 && ci.LCID < 0x10000)
+                    return string.Format("0000{0:x4}", ci.LCID);
+            }
+            catch { }
+            return null;
+        }
+
+        // "00000407" -> culture name "de-de" (lowercased) or null.
+        private static string IdToCultureName(string id8)
+        {
+            if (id8 == null || id8.Length != 8) return null;
+            try
+            {
+                int lcid = Convert.ToInt32(id8.Substring(4, 4), 16);
+                return CultureInfo.GetCultureInfo(lcid).Name.ToLowerInvariant();
+            }
+            catch { return null; }
+        }
+
+        private static void AddUnique(List<string> list, string id)
+        {
+            if (!list.Contains(id)) list.Add(id);
+        }
     }
 
     internal static class AppInfo
     {
-        public const string Version = "1.0.5";
+        public const string Version = "1.0.6";
         public const string RepoUrl = "https://github.com/DigiSphereX/windows-language-guard";
     }
 
@@ -429,6 +528,7 @@ namespace LanguageGuard
         private TextBox _txtFilter;
         private readonly HashSet<string> _checkedSet = new HashSet<string>();
         private List<string> _catalog = new List<string>();
+        private RichTextBox _txtSys;
         private Button _btnEnable;
         private Button _btnDisable;
         private CheckBox _chkAuto;
@@ -452,7 +552,7 @@ namespace LanguageGuard
         public MainForm()
         {
             Text = "LanguageGuard - Keep only the languages you type in";
-            ClientSize = new Size(430, 536);
+            ClientSize = new Size(430, 646);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -461,21 +561,39 @@ namespace LanguageGuard
             _guardian.OnEvent += delegate (string m) { AddLog(m); };
             BuildMenu();
 
+            // ---- System state (detected): installed Windows languages + typing
+            // languages next to the clock + typing-but-not-installed.
+            GroupBox gSys = new GroupBox();
+            gSys.Text = "System state (detected)";
+            gSys.Location = new Point(12, 30);
+            gSys.Size = new Size(406, 118);
+            Controls.Add(gSys);
+
+            _txtSys = new RichTextBox();
+            _txtSys.ReadOnly = true;
+            _txtSys.BorderStyle = BorderStyle.None;
+            _txtSys.BackColor = SystemColors.Control;
+            _txtSys.Location = new Point(10, 16);
+            _txtSys.Size = new Size(386, 96);
+            _txtSys.DetectUrls = false;
+            _txtSys.TabStop = false;
+            gSys.Controls.Add(_txtSys);
+
             Label cap = new Label();
             cap.Text = "Allowed input languages (checked):";
-            cap.Location = new Point(12, 36);
+            cap.Location = new Point(12, 154);
             cap.AutoSize = true;
             Controls.Add(cap);
 
             _txtFilter = new TextBox();
-            _txtFilter.Location = new Point(12, 56);
+            _txtFilter.Location = new Point(12, 174);
             _txtFilter.Size = new Size(406, 22);
             _txtFilter.TextChanged += delegate { RebuildList(); };
             Controls.Add(_txtFilter);
 
             _lst = new CheckedListBox();
-            _lst.Location = new Point(12, 82);
-            _lst.Size = new Size(406, 196);
+            _lst.Location = new Point(12, 200);
+            _lst.Size = new Size(406, 168);
             _lst.CheckOnClick = true;
             _lst.ItemCheck += delegate (object s, ItemCheckEventArgs e)
             {
@@ -486,14 +604,14 @@ namespace LanguageGuard
 
             _btnEnable = new Button();
             _btnEnable.Text = "Enable & Protect";
-            _btnEnable.Location = new Point(12, 288);
+            _btnEnable.Location = new Point(12, 376);
             _btnEnable.Size = new Size(195, 34);
             _btnEnable.Click += delegate { EnableGuard(); };
             Controls.Add(_btnEnable);
 
             _btnDisable = new Button();
             _btnDisable.Text = "Release all";
-            _btnDisable.Location = new Point(223, 288);
+            _btnDisable.Location = new Point(223, 376);
             _btnDisable.Size = new Size(195, 34);
             _btnDisable.Enabled = false;
             _btnDisable.Click += delegate { DisableGuard(); };
@@ -501,7 +619,7 @@ namespace LanguageGuard
 
             _chkAuto = new CheckBox();
             _chkAuto.Text = "Start automatically with Windows";
-            _chkAuto.Location = new Point(12, 330);
+            _chkAuto.Location = new Point(12, 418);
             _chkAuto.AutoSize = true;
             _chkAuto.Checked = Settings.GetAutoStart();
             _chkAuto.CheckedChanged += delegate
@@ -513,7 +631,7 @@ namespace LanguageGuard
 
             _radAlways = new RadioButton();
             _radAlways.Text = "Keep watching in the background (recommended)";
-            _radAlways.Location = new Point(12, 358);
+            _radAlways.Location = new Point(12, 448);
             _radAlways.AutoSize = true;
             _radAlways.Checked = true;
             _radAlways.CheckedChanged += delegate
@@ -526,7 +644,7 @@ namespace LanguageGuard
 
             _radBoot = new RadioButton();
             _radBoot.Text = "Or: fix languages once at sign-in, then exit";
-            _radBoot.Location = new Point(12, 382);
+            _radBoot.Location = new Point(12, 472);
             _radBoot.AutoSize = true;
             _radBoot.CheckedChanged += delegate
             {
@@ -538,26 +656,26 @@ namespace LanguageGuard
 
             _chkTray = new CheckBox();
             _chkTray.Text = "Minimize to tray (guard keeps running)";
-            _chkTray.Location = new Point(12, 408);
+            _chkTray.Location = new Point(12, 498);
             _chkTray.AutoSize = true;
             _chkTray.Checked = true;
             _chkTray.CheckedChanged += delegate { if (_miTray != null) _miTray.Checked = _chkTray.Checked; };
             Controls.Add(_chkTray);
 
             _lblStatus = new Label();
-            _lblStatus.Location = new Point(12, 436);
+            _lblStatus.Location = new Point(12, 524);
             _lblStatus.AutoSize = true;
             _lblStatus.ForeColor = Color.DimGray;
             Controls.Add(_lblStatus);
 
             Label logCap = new Label();
             logCap.Text = "Activity:";
-            logCap.Location = new Point(12, 460);
+            logCap.Location = new Point(12, 548);
             logCap.AutoSize = true;
             Controls.Add(logCap);
 
             _lblLog = new ListBox();
-            _lblLog.Location = new Point(12, 480);
+            _lblLog.Location = new Point(12, 568);
             _lblLog.Size = new Size(406, 50);
             _lblLog.HorizontalScrollbar = true;
             Controls.Add(_lblLog);
@@ -715,6 +833,65 @@ namespace LanguageGuard
                 : "State: idle - choose languages and press Enable & Protect.";
         }
 
+        private void RefreshSysState()
+        {
+            try
+            {
+                List<string> win = Detect.WindowsInstalled();
+                List<string> typ = Detect.Typing();
+                List<string> only = Detect.TypingButNotInstalled();
+
+                StringBuilder sb = new StringBuilder();
+                sb.Append("Windows languages (" + win.Count + "):  ");
+                sb.AppendLine(DescribeNames(win));
+                sb.Append("Typing langs, next to clock (" + typ.Count + "):  ");
+                sb.AppendLine(DescribeNames(typ));
+                if (only.Count > 0)
+                {
+                    sb.Append("Not installed, typing only (" + only.Count + "):  ");
+                    sb.AppendLine(DescribeNames(only));
+                    _txtSys.ForeColor = Color.FromArgb(160, 60, 0);
+                }
+                else
+                {
+                    sb.Append("All typing languages are installed as Windows languages - good.");
+                    _txtSys.ForeColor = Color.FromArgb(0, 110, 50);
+                }
+                _txtSys.Text = sb.ToString();
+            }
+            catch
+            {
+                _txtSys.Text = "Could not read the language state from this PC.\r\n\r\nLet LanguageGuard know which languages you type in, then press Enable & Protect.";
+            }
+            _txtSys.SelectionStart = 0;
+            _txtSys.SelectionLength = 0;
+        }
+
+        // Human-readable list: real Windows language names only (no hex ids).
+        private static string DescribeNames(List<string> ids)
+        {
+            if (ids.Count == 0) return "(none found)";
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (i > 0) sb.Append("; ");
+                sb.Append(DisplayName(ids[i]));
+            }
+            return sb.ToString();
+        }
+
+        private static string DisplayName(string id8)
+        {
+            try
+            {
+                int lcid = Convert.ToInt32(id8.Substring(4, 4), 16);
+                CultureInfo ci = CultureInfo.GetCultureInfo(lcid);
+                if (!string.IsNullOrEmpty(ci.EnglishName)) return ci.EnglishName;
+            }
+            catch { }
+            return id8;
+        }
+
         public void EnsureLoaded()
         {
             List<string> saved = Settings.GetAllowed();
@@ -726,6 +903,7 @@ namespace LanguageGuard
             List<string> pre = Detect.Selected();
 
             _catalog = Lang.Installed();
+            RefreshSysState();
             _checkedSet.Clear();
             foreach (string id in pre) _checkedSet.Add(id);
             RebuildList();
@@ -891,19 +1069,32 @@ namespace LanguageGuard
             }
         }
 
-        // Hidden diagnostic: write the current "detect + merge" result to a temp file
-        // (same code path the window uses when it pre-checks the list).
+        // Hidden diagnostic: write the current detection results to a temp file for
+        // verification on the target machine (no GUI needed, no admin rights needed).
         private static void RunSelftest()
         {
             StringBuilder sb = new StringBuilder();
-            List<string> sel = Detect.Selected();
-            for (int i = 0; i < sel.Count; i++)
-            {
-                if (i > 0) sb.Append(";");
-                sb.Append(Lang.Display(sel[i]));
-            }
+            sb.AppendLine("[WindowsInstalled]");
+            AppendIds(sb, Detect.WindowsInstalled());
+            sb.AppendLine("[Typing]");
+            AppendIds(sb, Detect.Typing());
+            sb.AppendLine("[TypingNotInstalled]");
+            AppendIds(sb, Detect.TypingButNotInstalled());
+            sb.AppendLine("[Selected]");
+            AppendIds(sb, Detect.Selected());
             try { System.IO.File.WriteAllText(System.IO.Path.GetTempPath() + "lg_selftest.txt", sb.ToString()); }
             catch { }
+        }
+
+        private static void AppendIds(StringBuilder sb, List<string> ids)
+        {
+            if (ids.Count == 0) { sb.AppendLine("(none)"); return; }
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (i > 0) sb.Append("; ");
+                sb.Append(ids[i] + " (" + Lang.Display(ids[i]) + ")");
+            }
+            sb.AppendLine();
         }
 
         // Silent mode started from the Run key: enforce the saved list for ~90 seconds
